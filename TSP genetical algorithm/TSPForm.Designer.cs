@@ -32,6 +32,7 @@
             generationLabel = new Label();
             costLabel = new Label();
             citiesLabel = new Label();
+            shuffleButton = new Button();
             SuspendLayout();
             // 
             // TSPPanel
@@ -69,11 +70,22 @@
             citiesLabel.TabIndex = 3;
             citiesLabel.Text = "label1";
             // 
+            // shuffleButton
+            // 
+            shuffleButton.Location = new Point(12, 449);
+            shuffleButton.Name = "shuffleButton";
+            shuffleButton.Size = new Size(228, 29);
+            shuffleButton.TabIndex = 4;
+            shuffleButton.Text = "Shuffle";
+            shuffleButton.UseVisualStyleBackColor = true;
+            shuffleButton.Click += shuffleButton_Click;
+            // 
             // TSPForm
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1040, 518);
+            Controls.Add(shuffleButton);
             Controls.Add(citiesLabel);
             Controls.Add(costLabel);
             Controls.Add(generationLabel);
@@ -90,5 +102,6 @@
         private Label generationLabel;
         private Label costLabel;
         private Label citiesLabel;
+        private Button shuffleButton;
     }
 }

@@ -14,6 +14,7 @@ namespace TSP_genetical_algorithm
 {
     public partial class TSPForm : Form
     {
+        private bool canAddCity = true;
         private int _generation = 0;
         private City cityA = new City(0, 0, "A", 0);
         private List<City> cityList = new List<City>()
@@ -28,6 +29,9 @@ namespace TSP_genetical_algorithm
             new City(35, 33, "I", 8),
             new City(100, 10, "J", 9),
             new City(91, 50, "K", 10),
+            new City(100, 100, "L", 11),
+            new City(0, 60, "M", 12),
+            new City(10, 22, "N", 13),
         };
 
         private List<City> citiesWithStart;
@@ -42,7 +46,7 @@ namespace TSP_genetical_algorithm
             InitializeComponent();
 
             citiesWithStart = [cityA, .. cityList];
-            tspGenetic = new TSPGenetic();
+            tspGenetic = new TSPGenetic(cityList, cityA);
 
             tspGenetic.GenerationCompleted += UpdateUI;
             // Draw the cities on the panel
@@ -59,7 +63,7 @@ namespace TSP_genetical_algorithm
             Task.Run(DrawLineBetweenCites);
 
             // start the genetic algorithm as a task
-            Task.Run(() => tspGenetic.GeneticAlgorithm(cityList, cityA, 5000, 1000));
+            Task.Run(() => tspGenetic.GeneticAlgorithm(100, 100000));
 
         }
 
@@ -117,16 +121,38 @@ namespace TSP_genetical_algorithm
         private void TSPPanel_MouseClick(object sender, MouseEventArgs e)
         {
             // Add new city
-            if (e.Button == MouseButtons.Left)
+            if (e.Button == MouseButtons.Left && canAddCity)
             {
+                canAddCity = false;
                 // Convert count to ASCII char
                 char c = (char)(cityList.Count + 1 + 65);
 
-                City newCity = new City(e.X / 6, e.Y / 6, c.ToString(), citiesWithStart.Max(c => c.GenDecimal)+1);
+                City newCity = new City(e.X / 6, e.Y / 6, c.ToString(), citiesWithStart.Max(c => c.GenDecimal) + 1);
                 cityList.Add(newCity);
                 citiesWithStart.Add(newCity);
                 TSPPanel.Invalidate();
+
+                tspGenetic.AddNewCity?.Invoke(this, new AddNewCityEventArgs() { City = newCity });
+                canAddCity = true;
             }
+        }
+
+        private void shuffleButton_Click(object sender, EventArgs e)
+        {
+            // Shuffle the cities positions
+            Random rnd = new Random();
+            foreach (City city in cityList.ToList())
+            {
+                city.X = rnd.Next(0, 100);
+                city.Y = rnd.Next(0, 60);
+            }
+
+            // shuffle the city A position
+            cityA.X = rnd.Next(0, 100);
+            cityA.Y = rnd.Next(0, 60);
+
+            tspGenetic.Shuffle?.Invoke(this, new ShuffleEventArgs() { Cities = cityList, CityA = cityA });
+
         }
     }
 }
