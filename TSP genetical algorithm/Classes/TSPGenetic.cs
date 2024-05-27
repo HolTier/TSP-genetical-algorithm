@@ -9,7 +9,7 @@ namespace TSP_genetical_algorithm.Classes
 {
     public class GenerationCompletedEventArgs : EventArgs
     {
-        public ulong BestGenome { get; set; }
+        public List<string> BestGenome { get; set; }
         public double Cost { get; set; }
     }
 
@@ -24,7 +24,7 @@ namespace TSP_genetical_algorithm.Classes
         // Evolutionary main loop
         public async void GeneticAlgorithm(List<City> cities, City cityA ,int populationSize, int generations)
         {
-            List<ulong> population = GeneratePopulation(populationSize, cities, cityA);
+            List<List<string>> population = GeneratePopulation(populationSize, cities, cityA);
             List<City> citiesWithStart = [cityA, .. cities];
 
             for (int i = 0; i < generations; i++)
@@ -32,19 +32,19 @@ namespace TSP_genetical_algorithm.Classes
                 // Calculate the fitness of each genome
                 List<double> fitnessValues = new List<double>();
 
-                foreach (ulong genome in population)
+                foreach (List<string> genome in population)
                 {
                     fitnessValues.Add(fitnessFunction(genome, citiesWithStart));
                 }
 
                 // Sort the population by fitness 
-                List<ulong> sortedPopulation = population.OrderBy(x => fitnessFunction(x, citiesWithStart)).ToList();
+                List<List<string>> sortedPopulation = population.OrderBy(x => fitnessFunction(x, citiesWithStart)).ToList();
 
                 // Select the best genomes
-                List<ulong> bestGenomes = sortedPopulation.GetRange(0, populationSize / 2);
+                List<List<string>> bestGenomes = sortedPopulation.GetRange(0, populationSize / 2);
 
                 // Crossover
-                List<ulong> newPopulation = bestGenomes;
+                List<List<string>> newPopulation = bestGenomes;
 
                 //for (int j = 0; j < bestGenomes.Count; j += 2)
                 //{
@@ -83,9 +83,10 @@ namespace TSP_genetical_algorithm.Classes
             }
         }
 
-        private static ulong Mutate(ulong v, List<City> cities)
+        private static List<string> Mutate(List<string> genome, List<City> cities)
         {
-            List<string> cityGenes = ConvertUintToListOfStrings(v);
+            // Copy the genome
+            List<string> newGenome = new List<string>(genome);
 
             // Switch genes place (1% chance), except for the first gene
             Random random = new Random();
@@ -94,15 +95,15 @@ namespace TSP_genetical_algorithm.Classes
                 // Get two random genes, without repeat
                 List<int> twoRandomGenes = new List<int>();
 
-                twoRandomGenes.AddRange(Enumerable.Range(1, cityGenes.Count - 1).OrderBy(x => Guid.NewGuid()).Take(2));
+                twoRandomGenes.AddRange(Enumerable.Range(1, genome.Count - 1).OrderBy(x => Guid.NewGuid()).Take(2));
 
-                string temp = cityGenes[twoRandomGenes[0]];
-                cityGenes[twoRandomGenes[0]] = cityGenes[twoRandomGenes[1]];
-                cityGenes[twoRandomGenes[1]] = temp;
+                string temp = newGenome[twoRandomGenes[0]];
+                newGenome[twoRandomGenes[0]] = newGenome[twoRandomGenes[1]];
+                newGenome[twoRandomGenes[1]] = temp;
             }
 
             // return UINT
-            return Convert.ToUInt64(string.Join("", cityGenes), 2);
+            return newGenome;
         }
 
         public static List<string> ConvertUintToListOfStrings(ulong v)
@@ -165,29 +166,27 @@ namespace TSP_genetical_algorithm.Classes
 
         }
 
-        private static ulong GenerateGenome(List<City> cities, City cityA)
+        private static List<string> GenerateGenome(List<City> cities, City cityA)
         {
             // shuffle the list
             Random random = new Random();
             List<City> shuffledCities = cities.OrderBy(x => random.Next()).ToList();
 
             // generate the genome
-            string genomeCode = cityA.Gen;
+            List<string> genomeCode = new List<string>() { cityA.Gen };
 
             foreach (City city in shuffledCities)
             {
-                genomeCode += city.Gen;
+                genomeCode.Add(city.Gen);
             }
 
-            // Convert binary string to uint
-            ulong genomeUint = Convert.ToUInt64(genomeCode, 2);
 
-            return genomeUint;
+            return genomeCode;
         }
 
-        private static List<ulong> GeneratePopulation(int populationSize, List<City> cities, City cityA)
+        private static List<List<string>> GeneratePopulation(int populationSize, List<City> cities, City cityA)
         {
-            List<ulong> population = new List<ulong>();
+            List<List<string>> population = new List<List<string>>();
 
             for (int i = 0; i < populationSize; i++)
             {
@@ -197,25 +196,22 @@ namespace TSP_genetical_algorithm.Classes
             return population;
         }
 
-        private static double fitnessFunction(ulong genome, List<City> cities)
+        private static double fitnessFunction(List<string> genome, List<City> cities)
         {
-            // Convert uint to binary string
-            List<string> cityGenes = ConvertUintToListOfStrings(genome);
-
             // Calculate the total distance
             double totalDistance = 0;
 
-            for (int i = 0; i < cityGenes.Count - 1; i++)
+            for (int i = 0; i < genome.Count - 1; i++)
             {
-                City city1 = cities.Find(x => x.Gen == cityGenes[i]);
-                City city2 = cities.Find(x => x.Gen == cityGenes[i + 1]);
+                City city1 = cities.Find(x => x.Gen == genome[i]);
+                City city2 = cities.Find(x => x.Gen == genome[i + 1]);
 
                 totalDistance += city1.DistanceTo(city2);
             }
 
             // Add the distance from the last city to the first city
-            City lastCity = cities.Find(x => x.Gen == cityGenes[cityGenes.Count - 1]);
-            City firstCity = cities.Find(x => x.Gen == cityGenes[0]);
+            City lastCity = cities.Find(x => x.Gen == genome[genome.Count - 1]);
+            City firstCity = cities.Find(x => x.Gen == genome[0]);
 
             totalDistance += lastCity.DistanceTo(firstCity);
 

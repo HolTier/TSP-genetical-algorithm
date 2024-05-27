@@ -15,22 +15,19 @@ namespace TSP_genetical_algorithm
     public partial class TSPForm : Form
     {
         private int _generation = 0;
-        private City cityA = new City(0, 0, "A", "0001");
+        private City cityA = new City(0, 0, "A", 0);
         private List<City> cityList = new List<City>()
         {
-            new City(32, 41, "B", "0010"),
-            new City(50, 50, "C", "0011"),
-            new City(10, 0, "D", "0100"),
-            new City(0, 10, "E", "0101"),
-            new City(50, 0, "F", "0110"),
-            new City(33, 50, "G", "0111"),
-            new City(12, 10, "H", "1000"),
-            new City(35, 33, "I", "1001"),
-            new City(100, 10, "J", "1010"),
-            new City(91, 50, "K", "1011"),
-            new City(105, 30, "L", "1100"),
-            new City(111, 12, "M", "1101"),
-            new City(60, 60, "N", "1110"),
+            new City(32, 41, "B", 1),
+            new City(50, 50, "C", 2),
+            new City(10, 0, "D", 3),
+            new City(0, 10, "E", 4),
+            new City(50, 0, "F", 5),
+            new City(33, 50, "G", 6),
+            new City(12, 10, "H", 7),
+            new City(35, 33, "I", 8),
+            new City(100, 10, "J", 9),
+            new City(91, 50, "K", 10),
         };
 
         private List<City> citiesWithStart;
@@ -38,7 +35,7 @@ namespace TSP_genetical_algorithm
         private TSPGenetic tspGenetic;
 
         // FIFO for drawing the lines
-        private Queue<ulong> bestGenomes = new Queue<ulong>();
+        private Queue<List<string>> bestGenomes = new Queue<List<string>>();
 
         public TSPForm()
         {
@@ -53,8 +50,8 @@ namespace TSP_genetical_algorithm
             {
                 foreach (City city in citiesWithStart)
                 {
-                    e.Graphics.FillEllipse(Brushes.Black, city.X*5, city.Y * 5, 5, 5);
-                    e.Graphics.DrawString(city.Name, new Font("Arial", 8), Brushes.Black, city.X*5, city.Y*5);
+                    e.Graphics.FillEllipse(Brushes.Black, city.X * 5, city.Y * 5, 5, 5);
+                    e.Graphics.DrawString(city.Name, new Font("Arial", 8), Brushes.Black, city.X * 5, city.Y * 5);
                 }
             };
 
@@ -83,14 +80,11 @@ namespace TSP_genetical_algorithm
                 if (bestGenomes.Count > 0)
                 {
                     // Get the best genome from the queue
-                    ulong bestGenome = bestGenomes.Dequeue();
-
-                    // Convert the genome to string of cities
-                    List<string> citesCode = TSPGenetic.ConvertUintToListOfStrings(bestGenome);
+                    List<string> bestGenome = bestGenomes.Dequeue();
 
                     // Convert the string of cities to list of cities
                     List<City> citiesFromGenome = new List<City>();
-                    foreach (string code in citesCode)
+                    foreach (string code in bestGenome)
                     {
                         citiesFromGenome.Add(citiesWithStart.Find(c => c.Gen == code));
                     }
@@ -99,13 +93,13 @@ namespace TSP_genetical_algorithm
                     using (Graphics g = TSPPanel.CreateGraphics())
                     {
                         g.Clear(Color.White);
-                        foreach (City city in citiesWithStart)
+                        foreach (City city in citiesWithStart.ToList())
                         {
                             g.FillEllipse(Brushes.Black, city.X * 6, city.Y * 6, 5, 5);
-                            g.DrawString(city.Name, new Font("Arial", 8), Brushes.Black, city.X * 5, city.Y * 5);
+                            g.DrawString(city.Name, new Font("Arial", 8), Brushes.Black, city.X * 6, city.Y * 6);
                         }
-
                         for (int i = 0; i < citiesFromGenome.Count - 1; i++)
+
                         {
                             g.DrawLine(Pens.Red, citiesFromGenome[i].X * 6, citiesFromGenome[i].Y * 6, citiesFromGenome[i + 1].X * 6, citiesFromGenome[i + 1].Y * 6);
                         }
@@ -117,6 +111,21 @@ namespace TSP_genetical_algorithm
 
                     citiesLabel.Invoke(new Action(() => citiesLabel.Text = cities));
                 }
+            }
+        }
+
+        private void TSPPanel_MouseClick(object sender, MouseEventArgs e)
+        {
+            // Add new city
+            if (e.Button == MouseButtons.Left)
+            {
+                // Convert count to ASCII char
+                char c = (char)(cityList.Count + 1 + 65);
+
+                City newCity = new City(e.X / 6, e.Y / 6, c.ToString(), citiesWithStart.Max(c => c.GenDecimal)+1);
+                cityList.Add(newCity);
+                citiesWithStart.Add(newCity);
+                TSPPanel.Invalidate();
             }
         }
     }

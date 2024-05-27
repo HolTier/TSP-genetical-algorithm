@@ -14,13 +14,16 @@ namespace TSP_genetical_algorithm.Classes
 
         // Gen is used to identify the city in the population array, stored as binary
         public string Gen { get; set; }
+        public int GenDecimal { get; set; }
 
-        public City(int x, int y, string name, string gen)
+        public City(int x, int y, string name, int genDecimal)
         {
             X = x;
             Y = y;
             Name = name;
-            Gen = gen;
+            GenDecimal = genDecimal;
+
+            Gen = Convert.ToString(genDecimal, 2).PadLeft(4, '0');
         }
 
         public double DistanceTo(City city)

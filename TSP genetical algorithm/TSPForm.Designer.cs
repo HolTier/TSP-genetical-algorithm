@@ -41,6 +41,7 @@
             TSPPanel.Name = "TSPPanel";
             TSPPanel.Size = new Size(782, 494);
             TSPPanel.TabIndex = 0;
+            TSPPanel.MouseClick += TSPPanel_MouseClick;
             // 
             // generationLabel
             // 
