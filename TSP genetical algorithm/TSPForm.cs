@@ -29,7 +29,7 @@ namespace TSP_genetical_algorithm
             new City(35, 33, "I", 8),
             new City(100, 10, "J", 9),
             new City(91, 50, "K", 10),
-            new City(100, 100, "L", 11),
+            new City(100, 30, "L", 11),
             new City(0, 60, "M", 12),
             new City(10, 22, "N", 13),
         };
@@ -42,13 +42,16 @@ namespace TSP_genetical_algorithm
         private Queue<List<string>> bestGenomes = new Queue<List<string>>();
 
         public TSPForm()
-        {
+        {   // Random 
+            RandomCities(100);
             InitializeComponent();
 
             citiesWithStart = [cityA, .. cityList];
             tspGenetic = new TSPGenetic(cityList, cityA);
 
             tspGenetic.GenerationCompleted += UpdateUI;
+
+            
             // Draw the cities on the panel
             TSPPanel.Paint += (sender, e) =>
             {
@@ -63,7 +66,7 @@ namespace TSP_genetical_algorithm
             Task.Run(DrawLineBetweenCites);
 
             // start the genetic algorithm as a task
-            Task.Run(() => tspGenetic.GeneticAlgorithm(100, 100000));
+            Task.Run(() => tspGenetic.GeneticAlgorithm(1000, 100000));
 
         }
 
@@ -121,9 +124,8 @@ namespace TSP_genetical_algorithm
         private void TSPPanel_MouseClick(object sender, MouseEventArgs e)
         {
             // Add new city
-            if (e.Button == MouseButtons.Left && canAddCity)
+            if (e.Button == MouseButtons.Left && tspGenetic.canEvolve)
             {
-                canAddCity = false;
                 // Convert count to ASCII char
                 char c = (char)(cityList.Count + 1 + 65);
 
@@ -133,7 +135,6 @@ namespace TSP_genetical_algorithm
                 TSPPanel.Invalidate();
 
                 tspGenetic.AddNewCity?.Invoke(this, new AddNewCityEventArgs() { City = newCity });
-                canAddCity = true;
             }
         }
 
@@ -153,6 +154,24 @@ namespace TSP_genetical_algorithm
 
             tspGenetic.Shuffle?.Invoke(this, new ShuffleEventArgs() { Cities = cityList, CityA = cityA });
 
+        }
+
+        private void RandomCities(int n)
+        {
+            Random rnd = new Random();
+
+            List<City> list = new List<City>();
+
+            for(int i=0; i<n; i++)
+            {
+                list.Add(new City(rnd.Next(0, 100), rnd.Next(0, 60), ((char)(i + 65)).ToString(), i));
+            }
+
+            cityList = list;
+            cityA = new City(rnd.Next(0, 100), rnd.Next(0, 60), "A", 0);
+            citiesWithStart = [cityA, .. cityList];
+
+            //shuffleButton_Click(null, null);
         }
     }
 }

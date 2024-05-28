@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -33,9 +34,10 @@ namespace TSP_genetical_algorithm.Classes
         private List<City> cities;
         private City cityA;
         private List<City> citiesWithStart;
-        List<List<string>> population;
-
-        private bool canEvolve = true;
+        private List<List<string>> population;
+        public bool canEvolve = true;
+        private ConcurrentDictionary<List<string>, double> fitnessCache;
+        private object populationLock = new object();
 
         public TSPGenetic(List<City> cities, City cityA)
         {
@@ -45,93 +47,93 @@ namespace TSP_genetical_algorithm.Classes
                 canEvolve = false;
                 cities = e.Cities;
                 cityA = e.CityA;
-                citiesWithStart = [cityA, ..cities];
+                citiesWithStart = new List<City> { cityA };
+                citiesWithStart.AddRange(cities);
+                fitnessCache = new ConcurrentDictionary<List<string>, double>(new ListComparer<string>());
                 canEvolve = true;
+                
             };
 
             this.cities = cities;
             this.cityA = cityA;
-
-            citiesWithStart = [cityA, ..cities ];
-
+            citiesWithStart = new List<City> { cityA };
+            citiesWithStart.AddRange(cities);
+            fitnessCache = new ConcurrentDictionary<List<string>, double>(new ListComparer<string>());
         }
 
-        private void AddCity(object? sender, AddNewCityEventArgs e)
+        private void AddCity(object sender, AddNewCityEventArgs e)
         {
-            canEvolve = false;
-            cities.Add(e.City);
-            citiesWithStart.Add(e.City);
-
-            // Add the new city to the population (on end of the genome)
-            if(population != null)
+            lock (populationLock)
             {
-                foreach (List<string> genome in population)
-                {
-                    genome.Add(e.City.Gen);
-                }
-            }
+                canEvolve = false;
+                cities.Add(e.City);
+                citiesWithStart.Add(e.City);
 
-            canEvolve = true;
+                if (population != null)
+                {
+                    foreach (List<string> genome in population)
+                    {
+                        genome.Add(e.City.Gen);
+                    }
+                }
+
+                canEvolve = true;
+            }
         }
 
-        // Evolutionary main loop
         public async void GeneticAlgorithm(int populationSize, int generations)
         {
-            population = GeneratePopulation(populationSize, cities, cityA);
-
+            lock (populationLock)
+            {
+                population = GeneratePopulation(populationSize, cities, cityA);
+            }
 
             for (int i = 0; i < generations; i++)
             {
                 if (canEvolve)
                 {
-                    // Calculate the fitness of each genome
-                    List<double> fitnessValues = new List<double>();
+                    // Calculate fitness values
+                    var fitnessValues = population.AsParallel().Select(genome => fitnessFunction(genome)).ToList();
 
-                    foreach (List<string> genome in population)
-                    {
-                        fitnessValues.Add(fitnessFunction(genome, citiesWithStart));
-                    }
-
-                    // Sort the population by fitness 
-                    List<List<string>> sortedPopulation = population.OrderBy(x => fitnessFunction(x, citiesWithStart.ToList())).ToList();
+                    // Sort population by fitness
+                    var sortedPopulation = population
+                        .Select((genome, index) => new { Genome = genome, Fitness = fitnessValues[index] })
+                        .OrderBy(x => x.Fitness)
+                        .ToList();
 
                     // Select the best genomes
-                    List<List<string>> bestGenomes = sortedPopulation.GetRange(0, populationSize / 2);
+                    var bestGenomes = sortedPopulation.Take(populationSize / 2).Select(x => x.Genome).ToList();
+                    var newPopulation = new List<List<string>>(bestGenomes);
 
-                    // Order Crossover
-                    List<List<string>> newPopulation = [..bestGenomes];
-
+                    // Crossover
                     for (int j = 0; j < bestGenomes.Count - 1; j += 2)
                     {
-                        List<string> child1Genome = OrderCrossover(bestGenomes[j], bestGenomes[j + 1]);
-                        newPopulation.Add(child1Genome);
-
-                        List<string> child2Genome = OrderCrossover(bestGenomes[j + 1], bestGenomes[j]);
-                        newPopulation.Add(child2Genome);
+                        newPopulation.Add(OrderCrossover(bestGenomes[j], bestGenomes[j + 1]));
+                        newPopulation.Add(OrderCrossover(bestGenomes[j + 1], bestGenomes[j]));
                     }
 
                     // Mutate
-                    for (int j = 0; j < newPopulation.Count / 2; j++)
+                    for (int j = (int)(newPopulation.Count / 2); j < newPopulation.Count; j++)
                     {
-                        newPopulation[j] = Mutate(newPopulation[j], citiesWithStart.ToList());
+                        newPopulation[j] = Mutate(newPopulation[j]);
                     }
 
-                    // Replace the old population with the new population
-                    //population = [.. bestGenomes, .. newPopulation];
-                    population = newPopulation;
+                    // Update population
+                    lock (populationLock)
+                    {
+                        population = newPopulation;
+                    }
 
-                    // Sort the population by fitness
-                    //population = population.OrderBy(x => fitnessFunction(x, citiesWithStart.ToList())).ToList();
+                    // Get the best genome
+                    var bestGenome = sortedPopulation.First().Genome;
+                    var bestFitness = sortedPopulation.First().Fitness;
 
-                    // Raise the event
-                    GenerationCompleted?.Invoke(this,
-                        new GenerationCompletedEventArgs()
-                        {
-                            // Return the genom with the lowest cost
-                            BestGenome = population.Find(x => fitnessFunction(x, citiesWithStart.ToList())
-                                == population.Min(y => fitnessFunction(y, citiesWithStart.ToList()))),
-                            Cost = population.Min(x => fitnessFunction(x, citiesWithStart.ToList()))
-                        });
+                    // Notify the UI
+                    GenerationCompleted?.Invoke(this, new GenerationCompletedEventArgs
+                    {
+                        BestGenome = bestGenome,
+                        Cost = bestFitness
+                    });
 
                     await Task.Delay(100);
                 }
@@ -141,89 +143,51 @@ namespace TSP_genetical_algorithm.Classes
                     break;
                 }
             }
-            
         }
 
-        private static List<string> Mutate(List<string> genome, List<City> cities)
+        private List<string> Mutate(List<string> genome)
         {
-            // Copy the genome
-            List<string> newGenome = new List<string>(genome);
+            var newGenome = new List<string>(genome.ToList());
+            var random = new Random();
 
-            // Switch genes place (1% chance), except for the first gene
-            Random random = new Random();
-            if (random.Next(0, 100) < 1)
+            // Swap two random genes
+            if (random.Next(0, 100) < 10)
             {
-                // Get two random genes, without repeat
-                List<int> twoRandomGenes = new List<int>();
-
-                twoRandomGenes.AddRange(Enumerable.Range(1, genome.Count - 1).OrderBy(x => Guid.NewGuid()).Take(2));
-
-                string temp = newGenome[twoRandomGenes[0]];
+                var twoRandomGenes = Enumerable.Range(1, genome.Count - 1).OrderBy(x => Guid.NewGuid()).Take(2).ToList();
+                var temp = newGenome[twoRandomGenes[0]];
                 newGenome[twoRandomGenes[0]] = newGenome[twoRandomGenes[1]];
                 newGenome[twoRandomGenes[1]] = temp;
             }
 
-            // return UINT
             return newGenome;
-        }
-
-        public static List<string> ConvertUintToListOfStrings(ulong v)
-        {
-            // Convert uint to binary string
-            string genomeCode = Convert.ToString((long)v, 2);
-
-            // Ensure the length of genomeCode is a multiple of 4 by adding leading zeros if necessary
-            int remainder = genomeCode.Length % 4;
-            if (remainder != 0)
-            {
-                genomeCode = genomeCode.PadLeft(genomeCode.Length + (4 - remainder), '0');
-            }
-
-            // Split the binary string into 4-bit strings
-            List<string> cityGenes = new List<string>();
-            for (int i = 0; i < genomeCode.Length - 1; i += 4)
-            {
-                cityGenes.Add(genomeCode.Substring(i, 4));
-            }
-
-            return cityGenes;
         }
 
         private List<string> OrderCrossover(List<string> parent1, List<string> parent2)
         {
-            // Initialize random number generator
-            Random random = new Random();
+            // Order crossover
+            // Copy the parents
+            var random = new Random();
+            var parent1Copy = new List<string>(parent1.Skip(1));
+            var parent2Copy = new List<string>(parent2.Skip(1));
 
-            // Create the copy of the parents and remove the first gene
-            List<string> parent1Copy = new List<string>(parent1);
-            List<string> parent2Copy = new List<string>(parent2);
-
-            parent1Copy.RemoveAt(0);
-            parent2Copy.RemoveAt(0);
-
-            // Determine crossover points
+            // Select two random points
             int length = parent1Copy.Count;
-            int point1 = random.Next(1, length);  // Ensure not to pick the first gene
+            int point1 = random.Next(1, length);
             int point2 = random.Next(1, length);
 
-            // Ensure point1 is less than point2
             if (point1 > point2)
             {
-                int temp = point1;
-                point1 = point2;
-                point2 = temp;
+                (point1, point2) = (point2, point1);
             }
 
-            // Create the child genome with placeholders
-            List<string> childGenome = new List<string>(new string[length]);
-
-            // Copy the substring from parent1 to child
+            // Create the child genome
+            var childGenome = new string[length];
             for (int i = point1; i <= point2; i++)
             {
                 childGenome[i] = parent1Copy[i];
             }
 
-            // Fill the remaining positions with genes from parent2
+            // Copy the rest of the genes from parent2
             int currentIndex = (point2 + 1) % length;
             foreach (var gene in parent2Copy)
             {
@@ -238,62 +202,94 @@ namespace TSP_genetical_algorithm.Classes
                 }
             }
 
-            // Add the first gene
-            childGenome.Insert(0, parent1[0]);
+            // Add the first gene from parent1
+            var finalGenome = new List<string> { parent1[0] };
+            finalGenome.AddRange(childGenome);
 
-            return childGenome;
+            return finalGenome;
         }
 
-        private static List<string> GenerateGenome(List<City> cities, City cityA)
+        private List<List<string>> GeneratePopulation(int populationSize, List<City> cities, City cityA)
         {
-            // shuffle the list
-            Random random = new Random();
-            List<City> shuffledCities = cities.OrderBy(x => random.Next()).ToList();
-
-            // generate the genome
-            List<string> genomeCode = new List<string>() { cityA.Gen };
-
-            foreach (City city in shuffledCities)
-            {
-                genomeCode.Add(city.Gen);
-            }
-
-
-            return genomeCode;
-        }
-
-        private static List<List<string>> GeneratePopulation(int populationSize, List<City> cities, City cityA)
-        {
-            List<List<string>> population = new List<List<string>>();
-
+            var population = new List<List<string>>();
             for (int i = 0; i < populationSize; i++)
             {
                 population.Add(GenerateGenome(cities, cityA));
             }
-
             return population;
         }
 
-        private static double fitnessFunction(List<string> genome, List<City> cities)
+        private List<string> GenerateGenome(List<City> cities, City cityA)
         {
+            var random = new Random();
+            var shuffledCities = cities.OrderBy(x => random.Next()).ToList();
+
+            var genomeCode = new List<string> { cityA.Gen };
+            genomeCode.AddRange(shuffledCities.Select(city => city.Gen));
+
+            return genomeCode;
+        }
+
+        private double fitnessFunction(List<string> genome)
+        {
+            // Check if the fitness value is already calculated
+            if (fitnessCache.TryGetValue(genome, out var cachedValue))
+            {
+                return cachedValue;
+            }
+
             // Calculate the total distance
             double totalDistance = 0;
-
             for (int i = 0; i < genome.Count - 1; i++)
             {
-                City city1 = cities.Find(x => x.Gen == genome[i]);
-                City city2 = cities.Find(x => x.Gen == genome[i + 1]);
-
+                // Find the cities in the list
+                var city1 = citiesWithStart.Find(x => x.Gen == genome[i]);
+                var city2 = citiesWithStart.Find(x => x.Gen == genome[i + 1]);
                 totalDistance += city1.DistanceTo(city2);
             }
 
             // Add the distance from the last city to the first city
-            City lastCity = cities.Find(x => x.Gen == genome[genome.Count - 1]);
-            City firstCity = cities.Find(x => x.Gen == genome[0]);
-
+            var lastCity = citiesWithStart.Find(x => x.Gen == genome[genome.Count - 1]);
+            var firstCity = citiesWithStart.Find(x => x.Gen == genome[0]);
             totalDistance += lastCity.DistanceTo(firstCity);
 
+            // Cache the fitness value
+            fitnessCache[genome] = totalDistance;
             return totalDistance;
+        }
+
+        private class ListComparer<T> : IEqualityComparer<List<T>>
+        {
+            // Compare two lists
+            public bool Equals(List<T> x, List<T> y)
+            {
+                if (x == null || y == null || x.Count != y.Count)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < x.Count; i++)
+                {
+                    if (!x[i].Equals(y[i]))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            // Get the hash code of the list
+            public int GetHashCode(List<T> obj)
+            {
+                if (obj == null) return 0;
+
+                int hash = 17;
+                foreach (var element in obj)
+                {
+                    hash = hash * 23 + (element == null ? 0 : element.GetHashCode());
+                }
+                return hash;
+            }
         }
     }
 }
